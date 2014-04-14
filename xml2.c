@@ -108,7 +108,9 @@ int b_domain[] = {98, 100, 44, 45, 89, 46, 87, 88, 5, 4};
 
 int g_gpiofd[MAXCHANNEL];
 
-float adcarray[MAXCHANNEL][MAXCHANNEL] = {4095};
+float adcarray[MAXCHANNEL][MAXCHANNEL] = {};
+
+float readADCvalue[MAXCHANNEL][MAXCHANNEL] = {};
 
 // save these points used in the connection list
 int testpointsA[MAXCHANNEL] = {-1};
@@ -945,6 +947,7 @@ int main(int argc, char **argv) {
 	for (i = 0; i < MAXCHANNEL; i++) {
 		for (j = 0; j < MAXCHANNEL; j++) {
 			adcarray[i][j] = -1;
+			readADCvalue[i][j] = -1;
 		}
 	}
 
@@ -1377,7 +1380,7 @@ int main(int argc, char **argv) {
 	for (i = 0; i < MAXCHANNEL; i++) {
 		for (j = 0; j < MAXCHANNEL; j++) {
 			if (-1 != adcarray[i][j]) {
-				printf("ADC[%d-%d]=%fohm\n", i, j, adcarray[i][j]);
+				printf("adcarray[%d-%d]=%fohm\n", i, j, adcarray[i][j]);
 				testpointsA[i] = 1;
 				testpointsB[j] = 1;
 			}
@@ -1400,7 +1403,7 @@ int main(int argc, char **argv) {
 	
 	printf("\n");
 #if 0
-	printf("\nStart ADC...\n");	
+	printf("\nStart ADC...\n");
 	ExportALLOut0();
 	adc_fd = OpenADC();
 	
@@ -1410,10 +1413,20 @@ int main(int argc, char **argv) {
 	   writeDomain(i, a_domain);
 	   for (j = 0; j < MAXCHANNEL; j++) {
 			if (testpointsB[j] == -1) { continue;}
-			// for resistor, check if [i][j] has value, if so, skip [j][i] query
+			//TODO for resistor, check if [i][j] has value, if so, skip [j][i] query
+
+			if (adcarray[i][j] == DIODE) {
+			} else if (adcarray[i][j] == OPEN) {
+			  	if readADCvalue[j][i] has value, use the same, no need to call ReadADC
+			} else if (adcarray[i][j] == (short or resistor) {
+				if readADCvalue[j][i] has value, use the same, no need to call ReadADC
+			} else { error !} 
+			
 			writeDomain(j, b_domain);
 			sum0 = ReadADC(adc_fd, 0);
 			sum1 = ReadADC(adc_fd, 2);
+			readADCvalue[i][j] = sum0 - sum1;
+			compar with adcarray
 			//if ( i == j)
 			printf("AB[%02d-%02d] ADC0=%f ADC2=%f\n", i, j, sum0, sum1);
 	   }
