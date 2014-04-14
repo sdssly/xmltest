@@ -10,7 +10,7 @@
  * test: reader2 test2.xml > reader1.tmp && diff reader1.tmp $(srcdir)/reader1.res
  * author: Daniel Veillard
  * copy: see Copyright for the status of this software.
- * gcc xml1.c -I/usr/include/libxml2	-lxml2	 -lm
+ * gcc xml1.c -I/usr/include/libxml2 -lxml2	-lm
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,10 +54,23 @@ extern int optind, opterr, optopt;
 
 int GetConnection = 0;
 int totalconnectnum = 0;
+
 int GetComp = 0;
-int GetSplice = 0;
 int totalcomp = 0;
+
+int GetSplice = 0;
 int totalsplice = 0;
+
+int GetFixture = 0;
+int totalfixture = 0;
+
+char g_fixturename[32];
+
+struct stfixture { // id must < 999
+	unsigned int id;
+	char name[32];
+};
+struct stfixture fixturelist[999] = {0};
 
 struct stcompoment {
 	unsigned int id;
@@ -65,11 +78,14 @@ struct stcompoment {
 	char name[32];
 	float value;	
 };
+struct stcompoment complist[99] = {0};
 
 struct stsplice {
 	unsigned int id;
 	char name[32];
 };
+struct stsplice splicelist[99] = {0};
+
 
 struct stconnections {
 	unsigned int pointA;
@@ -77,12 +93,14 @@ struct stconnections {
 	char name[32];
 	unsigned int color;
 };
+struct stconnections connlist[999] = {0};
 
 struct sttestconnections {
 	unsigned int pointA;
 	unsigned int pointB;
 	float value;
 };
+struct sttestconnections testconnectionlists[999] = {0};
 
 int a_domain[] = {8, 9, 10, 11, 117, 7, 6, 31, 30, 29};
 				  
@@ -96,13 +114,6 @@ float adcarray[MAXCHANNEL][MAXCHANNEL] = {4095};
 int testpointsA[MAXCHANNEL] = {-1};
 int testpointsB[MAXCHANNEL] = {-1};
 
-int totaltestnum = 0;
-struct sttestconnections testconnectionlists[999] = {0};
-
-struct stconnections connlist[999] = {0};
-
-struct stsplice splicelist[99] = {0};
-struct stcompoment complist[99] = {0};
 
 static char inSpliceList(unsigned int id) {
 	int i = 0;
@@ -194,12 +205,70 @@ static void printAttribute(xmlTextReaderPtr reader)
         {  
             name=xmlTextReaderConstName(reader);  
             value=xmlTextReaderConstValue(reader);  
-            printf("\tattr=[%s],val=[%s]\n",name,value);  
+            printf("\tattr=[%s],val=[%s]\n",name,value);
+			if (GetFixture == 1) {
+				if (strcmp(name, "name") == 0) {
+					printf("Fixture %s\n", value);
+					strcpy(g_fixturename, value);
+				}
+			}		
             res=xmlTextReaderMoveToNextAttribute(reader);  
         }  
         xmlTextReaderMoveToElement(reader);  
     }  
 }
+
+static void GetFixtures(const xmlChar *value) {
+	char id1[32];
+	char id2[32];
+	int ret = 0; 
+	char*	leftstring = NULL;
+	//strtok 
+	char buffer[256];
+	char *token="\r\n";
+	char *start = (char *) value;
+	char *str = (char *)value;
+	char *values = NULL;
+	printf("%s [%s]\n", __FUNCTION__, str);
+
+	leftstring = strstr(str, token);
+	while (leftstring) {
+		strncpy(buffer, (char *)str, leftstring - str);
+		buffer[leftstring-str] = '\0';
+		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
+
+		if (strlen(buffer) > 0) {
+			values = buffer;
+			while ((*values == ' ') || (*values == '\t')) {
+				++values;
+			}
+			printf("values=[%s] len=%zu\n", values, strlen(values));
+			// get these  list
+			ret = sscanf((char *)values, "%[^,],%[^,]", id1, 
+				id2);
+			printf("ret=%d %s-%s\n", ret, id1, id2);
+			if (ret != 2) {
+				printf("Get fixture list fail!\n");
+				return;
+			}
+
+			fixturelist[strtoul(id1, NULL, 10)].id = strtoul(id1, NULL, 10); 
+		
+			sprintf(fixturelist[strtoul(id1, NULL, 10)].name, "%s%s", g_fixturename, id2);
+			
+			//strcpy(fixturelist[totalfixture].name, g_fixturename);			
+			
+			
+			//printf("fixture:%d name=%s\n", fixturelist[totalfixture].id, fixturelist[totalfixture].name);
+			
+			totalfixture++;
+		}
+		str = leftstring + strlen(token);
+		leftstring = strstr((char *)str, token);
+	}
+	return;
+}
+
 
 // 65636,S1
 static void GetSplices(const xmlChar *value) {
@@ -219,14 +288,14 @@ static void GetSplices(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%d\n", buffer, strlen(buffer));
+		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%d\n", values, strlen(values));
+			printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these  list
 			ret = sscanf((char *)values, "%[^,],%[^,]", id1, 
 				id2);
@@ -274,14 +343,14 @@ static void GetConnections(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%d\n", buffer, strlen(buffer));
+		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%d\n", values, strlen(values));
+			printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these  list
 			ret = sscanf((char *)values, "%[^,],%[^,],%[^,],%[^,]", id1, 
 				id2, id3, id4);
@@ -334,14 +403,14 @@ static void GetCompoments(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%d\n", buffer, strlen(buffer));
+		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%d\n", values, strlen(values));
+			printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these compoments list
 			ret = sscanf((char *)values, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,]", id1, 
 				id2, id3, id4, id5, id6, id7);
@@ -423,6 +492,12 @@ static void printNode(xmlTextReaderPtr reader)
     {  
         printf("start=[%s]\n",name);
 
+		if (0 == strcmp("Fixture", name)) {
+			printf("start get Fixture ...\n");
+			g_fixturename[0] = '\0';
+			GetFixture = 1;
+		}
+
 		if (0 == strcmp("Splices", name)) {
 			printf("start get Splices ...\n");
 			GetSplice = 1;
@@ -441,6 +516,8 @@ static void printNode(xmlTextReaderPtr reader)
         printAttribute(reader);
     }else if(nodetype == XML_READER_TYPE_END_ELEMENT)  
     {  
+    	g_fixturename[0] = '\0';
+    	GetFixture = 0;
     	GetSplice = 0;
     	GetConnection = 0;
     	GetComp = 0;
@@ -478,6 +555,11 @@ static void printNode(xmlTextReaderPtr reader)
 			if (1 == GetConnection) {
 				GetConnections(value);
 			}
+
+			if (1 == GetFixture) {
+				GetFixtures(value);
+			}
+			
 	    }
 	}
 } 
@@ -871,6 +953,11 @@ int main(int argc, char **argv) {
 		testpointsB[i] = -1;
 	}
 
+	for (i = 0; i < 999; i++) {
+		fixturelist[i].name[0] = '\0';
+		fixturelist[i].id = -1;
+	}
+
 	if (strcmp(argv[1], "selftest") == 0) {
 		printf("perform selftest...\n");
 		SelfTest();
@@ -898,8 +985,16 @@ int main(int argc, char **argv) {
      */
     xmlMemoryDump();
 
+	printf("\nfixture list total=%d:\n", totalfixture);
+	for (i = 0; i < 999; i++) {
+		if (fixturelist[i].id != -1)
+		{
+			printf("name=%s point=%d\n", fixturelist[i].name, fixturelist[i].id);
+		}
+	}
 
-	printf("splice list:\n");
+
+	printf("\nsplice list:\n");
 	for (i = 0; i < totalsplice; i++) {
 		printf("%d %s\n", splicelist[i].id, splicelist[i].name);
 	}
@@ -914,7 +1009,6 @@ int main(int argc, char **argv) {
 			printf("\n");
 	}
 
-	totaltestnum = 0;
 	pointA = 0;
 	pointB = 0;
 	printf("\nconnection list:\n");
@@ -1293,19 +1387,20 @@ int main(int argc, char **argv) {
 	printf("\nTest point A list:\n");
 	for (i = 0; i < MAXCHANNEL; i++) {
 		if (testpointsA[i] != -1) {
-			printf("%d, ", i);
+			printf("%d[name=%s] ", i, fixturelist[i].name);
 		}
 	}
 
 	printf("\nTest point B list:\n");
 	for (i = 0; i < MAXCHANNEL; i++) {
 		if (testpointsB[i] != -1) {
-			printf("%d, ", i);
+			printf("%d[name=%s] ", i, fixturelist[i].name);
 		}
 	}	
-
-
-	printf("Start ADC...\n");	
+	
+	printf("\n");
+#if 0
+	printf("\nStart ADC...\n");	
 	ExportALLOut0();
 	adc_fd = OpenADC();
 	
@@ -1326,7 +1421,7 @@ int main(int argc, char **argv) {
 
    UnexportALL();
    CloseADC(adc_fd);
-
+#endif
     return(0);
 }
 
