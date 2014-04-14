@@ -1402,8 +1402,9 @@ int main(int argc, char **argv) {
 	}	
 	
 	printf("\n");
-#if 0
+#if 1
 	printf("\nStart ADC...\n");
+
 	ExportALLOut0();
 	adc_fd = OpenADC();
 	
@@ -1413,22 +1414,41 @@ int main(int argc, char **argv) {
 	   writeDomain(i, a_domain);
 	   for (j = 0; j < MAXCHANNEL; j++) {
 			if (testpointsB[j] == -1) { continue;}
-			//TODO for resistor, check if [i][j] has value, if so, skip [j][i] query
+			if (adcarray[i][j] == ADC_DIODE_CONNVALUE) {// test ij and ji
+				printf("Diode %d-%d...\n", i, j);
+			} else if ((adcarray[i][j] == ADC_DIRECT_CONNVALUE)
+				|| (adcarray[i][j] == -1) ||
+				((adcarray[i][j] < 4000) && (adcarray[i][j] >= 0))) {//direct/resist/undef
+					printf("adcarray=%f\n", adcarray[i][j]);
+					if (-1 != readADCvalue[j][i]) {
+						printf("resist/short/undef skip %d-%d read=%f\n", i, j, readADCvalue[j][i]);
+						readADCvalue[i][j] = readADCvalue[j][i];
+					} else {	}
+			}  
+			else { printf("ADC error !\n");} 
 
-			if (adcarray[i][j] == DIODE) {
-			} else if (adcarray[i][j] == OPEN) {
-			  	if readADCvalue[j][i] has value, use the same, no need to call ReadADC
-			} else if (adcarray[i][j] == (short or resistor) {
-				if readADCvalue[j][i] has value, use the same, no need to call ReadADC
-			} else { error !} 
-			
-			writeDomain(j, b_domain);
-			sum0 = ReadADC(adc_fd, 0);
-			sum1 = ReadADC(adc_fd, 2);
-			readADCvalue[i][j] = sum0 - sum1;
-			compar with adcarray
+			if (readADCvalue[i][j] == -1) {
+				writeDomain(j, b_domain);
+				sum0 = ReadADC(adc_fd, 0);
+				sum1 = ReadADC(adc_fd, 2);
+				readADCvalue[i][j] = sum0 - sum1;
+				printf("Read %d-%d %f-%f\n", i, j, sum0, sum1);
+			}
+			//compar with adcarray
 			//if ( i == j)
-			printf("AB[%02d-%02d] ADC0=%f ADC2=%f\n", i, j, sum0, sum1);
+			printf("AB[%02d-%02d] [%f-%f]\n", 
+				i, j, adcarray[i][j], readADCvalue[i][j]);
+			if (adcarray[i][j] == ADC_DIODE_CONNVALUE) {
+				printf("compare diode %d-%d\n", i, j);
+			} else { // 
+				if (adcarray[i][j] == -1) {
+					printf("compare with %d-%d\n", j, i);
+				} else {
+					printf("compare with %d-%d\n", i, j);
+				}
+			}
+			//TODO compare readadcvalue with ij and ji
+			
 	   }
    }
 
