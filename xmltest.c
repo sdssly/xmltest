@@ -10,7 +10,8 @@
  * test: reader2 test2.xml > reader1.tmp && diff reader1.tmp $(srcdir)/reader1.res
  * author: Daniel Veillard
  * copy: see Copyright for the status of this software.
- * gcc xml1.c -I/usr/include/libxml2 -lxml2	-lm
+ * 
+ * gcc --static /xmltest.c -I/usr/include/libxml2  -lxml2   -lm -lz -llzma  
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,10 +40,8 @@ extern int optind, opterr, optopt;
  * @reader: the xmlReader
  *
  * Dump information about the current node
- */
-
+ */ 
 #define ADC_OPEN_CONNVALUE (4095)
-
 #define ADC_DIRECT_CONNVALUE (0)
 #define ADC_DIODE_CONNVALUE (1)
 
@@ -52,6 +51,13 @@ extern int optind, opterr, optopt;
 #define COMP_D (1)
 #define COMP_C (2)
 
+#define MAX_RESIST 	(10000000)
+
+double ShortMin = 0;
+double ShortMax = 0;
+
+double ContMin = 0;
+double ContMax = 0;
 int GetConnection = 0;
 int totalconnectnum = 0;
 
@@ -64,19 +70,34 @@ int totalsplice = 0;
 int GetFixture = 0;
 int totalfixture = 0;
 
+int GetCont = 0;
+int GetShort = 0;
+unsigned int ContisUsed = 0;
+unsigned int ShortisUsed = 0;
+
 char g_fixturename[32];
 
 struct stfixture { // id must < 999
 	unsigned int id;
 	char name[32];
 };
+// Save these test points
 struct stfixture fixturelist[999] = {0};
+
+struct stswitch {
+	unsigned int pointA;
+	unsigned int pointB;
+	char name[32];
+};
+
+struct stswitch switchlist[999] = {};
 
 struct stcompoment {
 	unsigned int id;
 	unsigned int type; // R/D
 	char name[32];
-	float value;	
+	float value;
+	int tolerance; 	// in percent
 };
 struct stcompoment complist[99] = {0};
 
@@ -108,14 +129,30 @@ int b_domain[] = {98, 100, 44, 45, 89, 46, 87, 88, 5, 4};
 
 int g_gpiofd[MAXCHANNEL];
 
+// save these connection list table
 float adcarray[MAXCHANNEL][MAXCHANNEL] = {};
 
-float readADCvalue[MAXCHANNEL][MAXCHANNEL] = {};
+float readADC0value[MAXCHANNEL][MAXCHANNEL] = {};
+float readADC2value[MAXCHANNEL][MAXCHANNEL] = {};
 
 // save these points used in the connection list
 int testpointsA[MAXCHANNEL] = {-1};
 int testpointsB[MAXCHANNEL] = {-1};
+int allUsedpoints[MAXCHANNEL] = {-1};
 
+static float GetResist(float adc0, float adc2) {
+	float R = -1;
+	float R2 = 2000;
+	float R_switch = 5.75;
+
+	if (adc2 == 0) { // open
+		return MAX_RESIST;
+	}
+
+	R = (adc0*R2)/adc2 - R2 - (R_switch * 4);
+	
+	return R;
+}
 
 static char inSpliceList(unsigned int id) {
 	int i = 0;
@@ -199,7 +236,7 @@ static unsigned int tracePoint(unsigned int point) {
 
 static void printAttribute(xmlTextReaderPtr reader)  
 {  
-    if(1==xmlTextReaderHasAttributes(reader))  
+    if(1 == xmlTextReaderHasAttributes(reader))  
     {  
         const xmlChar *name,*value;  
         int res=xmlTextReaderMoveToFirstAttribute(reader); 
@@ -213,16 +250,74 @@ static void printAttribute(xmlTextReaderPtr reader)
 					printf("Fixture %s\n", value);
 					strcpy(g_fixturename, value);
 				}
-			}		
-            res=xmlTextReaderMoveToNextAttribute(reader);  
+			}
+
+			if (GetCont == 1) {
+				if (strcmp(name, "opts") == 0) {
+					// check the value, should be eo/ek/em, or o/k/m
+					printf("opts=%s\n", value);
+					if (strcmp(value, "eo") == 0) {
+						ContisUsed = 1;
+					} else if (strcmp(value, "ek") == 0) {
+						ContisUsed = 1000;
+					} else if (strcmp(value, "em") == 0) {
+						ContisUsed = (1000*1000);
+					} else {
+						printf("Not used the connect limit...\n");
+						ContisUsed = 0;
+					} 
+				}
+
+				if (strcmp(name, "val") == 0) {
+					printf("val=%s\n", value);
+					if (ContMin >= 0) {
+						printf("Set the min/max using the first Cont element\n");
+						ContMin = -(ContisUsed * atof(value));
+						ContMax = (ContisUsed * atof(value));
+					}
+					printf("Cont range %f-%f\n", ContMin, ContMax);
+				}				
+			}			
+
+			if (GetShort == 1) {
+				if (strcmp(name, "opts") == 0) {
+					// check the value, should be eo/ek/em, or o/k/m
+					printf("opts=%s\n", value);
+					if (strcmp(value, "eo") == 0) {
+						ShortisUsed = 1;
+					} else if (strcmp(value, "ek") == 0) {
+						ShortisUsed = 1000;
+					} else if (strcmp(value, "em") == 0) {
+						ShortisUsed = (1000*1000);
+					} else {
+						printf("Not used the short limit...\n");
+						ShortisUsed = 0;
+					} 
+				}
+
+				if (strcmp(name, "val") == 0) {
+					printf("val=%s\n", value);
+					if (ShortMin >= 0) {
+						printf("Set the min/max using the first short element\n");
+						ShortMin = -(ShortisUsed * atof(value));
+						ShortMax = (ShortisUsed * atof(value));
+					}
+					printf("Short range %f-%f\n", ShortMin, ShortMax);
+				}				
+			}
+
+            res = xmlTextReaderMoveToNextAttribute(reader);  
         }  
         xmlTextReaderMoveToElement(reader);  
     }  
+	GetCont = 0;
+	GetShort = 0;
 }
 
 static void GetFixtures(const xmlChar *value) {
 	char id1[32];
 	char id2[32];
+	char id3[32];
 	int ret = 0; 
 	char*	leftstring = NULL;
 	//strtok 
@@ -246,24 +341,27 @@ static void GetFixtures(const xmlChar *value) {
 			}
 			printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these  list
-			ret = sscanf((char *)values, "%[^,],%[^,]", id1, 
-				id2);
-			printf("ret=%d %s-%s\n", ret, id1, id2);
-			if (ret != 2) {
-				printf("Get fixture list fail!\n");
-				return;
+			ret = sscanf((char *)values, "%[^,],%[^,],%[^,]", id1, id2, id3);
+			if (ret == 3) { // check the switch 
+				connlist[totalconnectnum].pointA = strtoul(id1, NULL, 10);
+				connlist[totalconnectnum].pointB = strtoul(id3, NULL, 10);
+				sprintf(connlist[totalconnectnum].name, "%s%s", g_fixturename, id2); 
+				connlist[totalconnectnum].color = 0;
+				printf("connection:%d-%d name=%s color=%d\n", connlist[totalconnectnum].pointA,
+					connlist[totalconnectnum].pointB, connlist[totalconnectnum].name, connlist[totalconnectnum].color);				
+				totalconnectnum++;
+			} else { // fixture
+				ret = sscanf((char *)values, "%[^,],%[^,]", id1, id2);
+				if (ret != 2) {
+					printf("Get fixture list fail!\n");
+					return;
+				}
+				printf("ret=%d %s-%s\n", ret, id1, id2);
+				fixturelist[strtoul(id1, NULL, 10)].id = strtoul(id1, NULL, 10); 
+				sprintf(fixturelist[strtoul(id1, NULL, 10)].name, "%s%s", g_fixturename, id2);
+				printf("fixture:%d name=%s\n", fixturelist[totalfixture].id, fixturelist[totalfixture].name);
+				totalfixture++;	
 			}
-
-			fixturelist[strtoul(id1, NULL, 10)].id = strtoul(id1, NULL, 10); 
-		
-			sprintf(fixturelist[strtoul(id1, NULL, 10)].name, "%s%s", g_fixturename, id2);
-			
-			//strcpy(fixturelist[totalfixture].name, g_fixturename);			
-			
-			
-			//printf("fixture:%d name=%s\n", fixturelist[totalfixture].id, fixturelist[totalfixture].name);
-			
-			totalfixture++;
 		}
 		str = leftstring + strlen(token);
 		leftstring = strstr((char *)str, token);
@@ -446,10 +544,13 @@ static void GetCompoments(const xmlChar *value) {
 					complist[totalcomp].value /= 1000000;
 				} else {
 					printf("R-value fail!\n");
+					complist[totalcomp].value = 9999;
 				}
+				complist[totalcomp].tolerance = strtol(id6, NULL, 10); 
 			} 
 			else if (0 == strcmp("d", id2)) {
 				complist[totalcomp].type = COMP_D;
+				complist[totalcomp].tolerance = strtol(id6, NULL, 10);
 			} else if (0 == strcmp("c", id2)) {
 				complist[totalcomp].type = COMP_C;
 			}  
@@ -457,9 +558,9 @@ static void GetCompoments(const xmlChar *value) {
 				printf("Unknown compoment!\n");
 			}
 
-			printf("comp:type=%d id=%d name=%s value=%f\n", complist[totalcomp].type, 
+			printf("comp:type=%d id=%d name=%s value=%f tolerance=%d\n", complist[totalcomp].type, 
 				complist[totalcomp].id, complist[totalcomp].name, 
-				complist[totalcomp].value);
+				complist[totalcomp].value, complist[totalcomp].tolerance);
 			
 			totalcomp++;
 		}
@@ -494,6 +595,17 @@ static void printNode(xmlTextReaderPtr reader)
     {  
         printf("start=[%s]\n",name);
 
+		// Get the first Cont/Short elements
+		if (0 == strcmp("Cont", name)) {
+			printf("start get Cont ...\n");
+			GetCont = 1;
+		}
+
+		if (0 == strcmp("Short", name)) {
+			printf("start get Short ...\n");
+			GetShort = 1;
+		}
+
 		if (0 == strcmp("Fixture", name)) {
 			printf("start get Fixture ...\n");
 			g_fixturename[0] = '\0';
@@ -516,13 +628,17 @@ static void printNode(xmlTextReaderPtr reader)
 		}
 		
         printAttribute(reader);
-    }else if(nodetype == XML_READER_TYPE_END_ELEMENT)  
+    }
+	else if(nodetype == XML_READER_TYPE_END_ELEMENT)  
     {  
+    	printf("End XML element\n");
     	g_fixturename[0] = '\0';
     	GetFixture = 0;
     	GetSplice = 0;
     	GetConnection = 0;
     	GetComp = 0;
+		GetCont = 0;
+		GetShort = 0;
         //printf("end=[%s]\n",name);
     } else if (nodetype == XML_READER_TYPE_COMMENT) {
 		printf("comment=[%s]\n",name);
@@ -855,9 +971,10 @@ float ReadADCAll(int adc_fd) {
 int SelfTest()
 {
 	int i, j;
-	float sum0 = 0;
-	float sum1 = 0;
+	float adc0 = 0;
+	float adc2 = 0;
 	int adc_fd = -1;
+	float resist = 0;
 
 	ExportALLOut0();
 
@@ -871,10 +988,19 @@ int SelfTest()
 			//usleep(100*2);
 			#if 1
 			//27S
-			sum0 = ReadADC(adc_fd, 0);
-			sum1 = ReadADC(adc_fd, 2);
-			//if ( i == j)
-			printf("AB[%02d-%02d] ADC0=%f ADC2=%f\n", i, j, sum0, sum1);
+			adc0 = ReadADC(adc_fd, 0);
+			adc2 = ReadADC(adc_fd, 2);
+			resist = GetResist(adc0, adc2);
+			printf("AB[%02d-%02d] ADC2=%f R=%f\n", i, j, adc2, resist);
+			if (i == j) {// ADC2 != 0
+				if (0 == adc2) {
+					printf("Selfttest %d-%d fail %f\n", i, j, adc2);
+				}
+			} else { // ADC2 == 0
+				if (0 != adc2) {
+					printf("Selfttest %d-%d fail %f\n", i, j, adc2);
+				}
+			}
 			#else
 			// 20S
 			sum0 = ReadADCAll(adc_fd);
@@ -905,6 +1031,7 @@ int SelfTest()
 
 
 int main(int argc, char **argv) {
+	float resist = 0;
 	float sum0 = 0;
 	float sum1 = 0;
 	int adc_fd = -1;
@@ -914,6 +1041,8 @@ int main(int argc, char **argv) {
 	unsigned int pointA, pointB, pointNext;
 	unsigned int pointLeft, pointRight, pointPair;
 	struct stcompoment* pcompoment = NULL;
+
+	printf("ADC test build %s-%s\n", __DATE__, __TIME__);
 
 #if 0
 	while ((c = getopt(argc, argv, "ht")) > 0) {
@@ -935,7 +1064,7 @@ int main(int argc, char **argv) {
 #endif
 	
     if (argc != 2) {
-        printf("a.out selftest selftest\n");
+        printf("a.out selftest\n");
 		printf("a.out NXfile.nxf check configfile\n");
 		return -1;
     }
@@ -947,13 +1076,15 @@ int main(int argc, char **argv) {
 	for (i = 0; i < MAXCHANNEL; i++) {
 		for (j = 0; j < MAXCHANNEL; j++) {
 			adcarray[i][j] = -1;
-			readADCvalue[i][j] = -1;
+			readADC0value[i][j] = -1;
+			readADC2value[i][j] = -1;
 		}
 	}
 
 	for (i = 0; i < MAXCHANNEL; i++) {
 		testpointsA[i] = -1;
 		testpointsB[i] = -1;
+		allUsedpoints[i] = -1;
 	}
 
 	for (i = 0; i < 999; i++) {
@@ -1086,9 +1217,12 @@ int main(int argc, char **argv) {
 		}
 
 		if ((pointA < 999) && (pointB < 999)) {
+			printf("Direct %d-%d %f\n", pointA, pointB, adcarray[pointB][pointA]);
 			if (adcarray[pointB][pointA] == ADC_DIRECT_CONNVALUE) {
 				//printf("Skip dup %d-%d\n", pointNext, pointB);
-			} else adcarray[pointA][pointB] = ADC_DIRECT_CONNVALUE;
+			} else { 
+				adcarray[pointA][pointB] = ADC_DIRECT_CONNVALUE;
+			}
 		}
 
 		if ((pointA < 999) && (pointB >= 81920)) {
@@ -1408,50 +1542,124 @@ int main(int argc, char **argv) {
 	ExportALLOut0();
 	adc_fd = OpenADC();
 	
-   // check all these points in testpointA/B
-   for (i = 0; i < MAXCHANNEL; i++) {
-   	   if (testpointsA[i] == -1) { continue;}
-	   writeDomain(i, a_domain);
-	   for (j = 0; j < MAXCHANNEL; j++) {
-			if (testpointsB[j] == -1) { continue;}
-			if (adcarray[i][j] == ADC_DIODE_CONNVALUE) {// test ij and ji
-				printf("Diode %d-%d...\n", i, j);
+   	// check all these points in testpointA/B
+	for (i = 0; i < MAXCHANNEL; i++) {	
+		if (testpointsA[i] == -1) {// skip unused points in group A
+	   		continue;
+		}
+		allUsedpoints[i] = 1;
+	   	writeDomain(i, a_domain);
+	   	for (j = 0; j < MAXCHANNEL; j++) {
+	   		if (i == j) {continue; } // skip self-test
+			if (testpointsB[j] == -1) { // skip unused points in group B 
+				continue;
+			}
+			allUsedpoints[j] = 1;
+			
+			if ((adcarray[i][j] == ADC_DIODE_CONNVALUE)
+				|| (adcarray[i][j] == ADC_OPEN_CONNVALUE)) {// need to rad adc[ij] and adc[ji]
+				printf("Diode adcarray[%d-%d]=%f...\n", i, j, adcarray[i][j]);
 			} else if ((adcarray[i][j] == ADC_DIRECT_CONNVALUE)
 				|| (adcarray[i][j] == -1) ||
-				((adcarray[i][j] < 4000) && (adcarray[i][j] >= 0))) {//direct/resist/undef
-					printf("adcarray=%f\n", adcarray[i][j]);
-					if (-1 != readADCvalue[j][i]) {
-						printf("resist/short/undef skip %d-%d read=%f\n", i, j, readADCvalue[j][i]);
-						readADCvalue[i][j] = readADCvalue[j][i];
-					} else {	}
+				((adcarray[i][j] > 0))) {//direct/undef/resist
+					printf("adcarray[%d-%d]=%f\n", i, j, adcarray[i][j]);
+					if (-1 != readADC0value[j][i]) {
+						printf("resist/short/undef skip %d-%d read=%f\n", i, j, readADC0value[j][i]);
+						readADC0value[i][j] = readADC0value[j][i];
+						readADC2value[i][j] = readADC2value[j][i];
+					} else { //
+						printf("No ADC value!\n");
+					}
 			}  
-			else { printf("ADC error !\n");} 
+			else { // FIXME check the undef connections(adcarray=4095)
+				printf("ADC error! adcarray[%d-%d]=%f\n", i, j, adcarray[i][j]);
+			} 
 
-			if (readADCvalue[i][j] == -1) {
+			if (readADC0value[i][j] == -1) { // no adc value
 				writeDomain(j, b_domain);
 				sum0 = ReadADC(adc_fd, 0);
 				sum1 = ReadADC(adc_fd, 2);
-				readADCvalue[i][j] = sum0 - sum1;
-				printf("Read %d-%d %f-%f\n", i, j, sum0, sum1);
+				readADC0value[i][j] = sum0;
+				readADC2value[i][j] = sum1;
+				printf("Read %d-%d ADC0=%f ADC2=%f\n", i, j, sum0, sum1);
 			}
 			//compar with adcarray
 			//if ( i == j)
-			printf("AB[%02d-%02d] [%f-%f]\n", 
-				i, j, adcarray[i][j], readADCvalue[i][j]);
-			if (adcarray[i][j] == ADC_DIODE_CONNVALUE) {
-				printf("compare diode %d-%d\n", i, j);
-			} else { // 
-				if (adcarray[i][j] == -1) {
-					printf("compare with %d-%d\n", j, i);
-				} else {
-					printf("compare with %d-%d\n", i, j);
-				}
-			}
-			//TODO compare readadcvalue with ij and ji
+			resist = GetResist(readADC0value[i][j], readADC2value[i][j]);
+			printf("AB[%d-%d] adcarray=%f ADC0=%f ADC2=%f R=%f\n", 
+				i, j, adcarray[i][j], readADC0value[i][j], readADC2value[i][j], resist);
 			
+			if (adcarray[i][j] == ADC_OPEN_CONNVALUE) {
+				if (resist == MAX_RESIST) {
+					printf("***open %d-%d PASS!\n", i, j);
+				} else {
+					printf("***open %d-%d FAIL! %f\n", i, j, resist);
+				}
+			} else if (adcarray[i][j] == ADC_DIODE_CONNVALUE) {
+					if ((resist > 0) && (resist < MAX_RESIST)) {
+						printf("***DIOD %d-%d PASS %f\n", i, j, resist);
+					} else {
+						printf("***DIOD %d-%d FAIL %f\n", i, j, resist);
+					}
+				} 
+			else if (adcarray[i][j] == ADC_DIRECT_CONNVALUE) {
+					if ((resist > ContMin) && (resist < ContMax)) {
+						printf("***directconnection %d-%d PASS %f\n", i, j, resist);
+					} else {
+						printf("***directconnection %d-%d FAIL %f\n", i, j, resist);
+					}
+				}
+			else if (adcarray[i][j] == -1) {
+				if (resist == MAX_RESIST) {
+					printf("***disconnect %d-%d PASS %f\n", i, j, resist);
+				} else {
+					printf("***disconnect %d-%d FAIL %f\n", i, j, resist);
+				}
+			} else { // resist
+				if ((adcarray[i][j] > 0) && (adcarray[i][j] < 100)) {
+					if ((resist > (adcarray[i][j] - 5)) && (resist < (adcarray[i][j] + 5))) {
+						printf("***resist %d-%d PASS %f==%f\n", i, j, adcarray[i][j], resist);
+					} else {
+						printf("***resist %d-%d FAIL %f==%f\n", i, j, adcarray[i][j], resist);
+					}
+				} else if ((adcarray[i][j] >= 100) && (adcarray[i][j] < 10000)) {
+					if ((resist > (adcarray[i][j] * 0.95)) && (resist < (adcarray[i][j] * 1.05))) {
+						printf("***resist %d-%d PASS %f==%f\n", i, j, adcarray[i][j], resist);
+					} else {
+						printf("***resist %d-%d FAIL %f==%f\n", i, j, adcarray[i][j], resist);
+					}				
+				} else if ((adcarray[i][j] >= 10000) && (adcarray[i][j] < 50000)) {
+					if ((resist > (adcarray[i][j] * 0.9)) && (resist < (adcarray[i][j] * 1.1))) {
+						printf("***resist %d-%d PASS %f==%f\n", i, j, adcarray[i][j], resist);
+					} else {
+						printf("***resist %d-%d FAIL %f==%f\n", i, j, adcarray[i][j], resist);
+					}				
+				} else {
+					printf("***resist %d-%d FAIL %f==%f\n", i, j, adcarray[i][j], resist);
+				} 
+			}
 	   }
    }
 
+// TODO step2 test all connections in the used-pin list
+	printf("Test all used points:\n");
+	for (i = 0; i < MAXCHANNEL; i++) {
+		if (allUsedpoints[i] != -1) {
+			printf("%d\n", i);
+		}
+	}
+	
+	for (i = 0; i < MAXCHANNEL; i++) {
+		if (allUsedpoints[i] == -1) {
+			continue;
+		};
+		for (j = i; j < MAXCHANNEL; j++) {
+			if (allUsedpoints[j] == -1) {
+				continue;
+			};
+			printf("Test %d-%d\n", i, j);
+		}
+	}
    UnexportALL();
    CloseADC(adc_fd);
 #endif
