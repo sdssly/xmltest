@@ -332,14 +332,14 @@ static void GetFixtures(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
+		//printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%zu\n", values, strlen(values));
+			//printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these  list
 			ret = sscanf((char *)values, "%[^,],%[^,],%[^,]", id1, id2, id3);
 			if (ret == 3) { // check the switch 
@@ -356,7 +356,7 @@ static void GetFixtures(const xmlChar *value) {
 					printf("Get fixture list fail!\n");
 					return;
 				}
-				printf("ret=%d %s-%s\n", ret, id1, id2);
+				//printf("ret=%d %s-%s\n", ret, id1, id2);
 				fixturelist[strtoul(id1, NULL, 10)].id = strtoul(id1, NULL, 10); 
 				sprintf(fixturelist[strtoul(id1, NULL, 10)].name, "%s%s", g_fixturename, id2);
 				printf("fixture:%d name=%s\n", fixturelist[totalfixture].id, fixturelist[totalfixture].name);
@@ -388,18 +388,18 @@ static void GetSplices(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
+		//printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%zu\n", values, strlen(values));
+			//printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these  list
 			ret = sscanf((char *)values, "%[^,],%[^,]", id1, 
 				id2);
-			printf("ret=%d %s-%s\n", ret, id1, id2);
+			//printf("ret=%d %s-%s\n", ret, id1, id2);
 			if (ret != 2) {
 				printf("Get splice list fail!\n");
 				return ;
@@ -443,7 +443,7 @@ static void GetConnections(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
+		//printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
@@ -503,19 +503,18 @@ static void GetCompoments(const xmlChar *value) {
 	while (leftstring) {
 		strncpy(buffer, (char *)str, leftstring - str);
 		buffer[leftstring-str] = '\0';
-		printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
+		//printf("buffer=[%s] len=%zu\n", buffer, strlen(buffer));
 
 		if (strlen(buffer) > 0) {
 			values = buffer;
 			while ((*values == ' ') || (*values == '\t')) {
 				++values;
 			}
-			printf("values=[%s] len=%zu\n", values, strlen(values));
+			//printf("values=[%s] len=%zu\n", values, strlen(values));
 			// get these compoments list
 			ret = sscanf((char *)values, "%[^,],%[^,],%[^,],%[^,],%[^,],%[^,],%[^,]", id1, 
 				id2, id3, id4, id5, id6, id7);
-			printf("ret=%d %s-%s-%s-%s-%s-%s-[%s]\n", ret, id1, id2, id3, 
-			id4, id5, id6, id7);
+			//printf("ret=%d %s-%s-%s-%s-%s-%s-[%s]\n", ret, id1, id2, id3, id4, id5, id6, id7);
 			if (ret != 7) {
 				printf("Get compoment list fail!\n");
 				return ;
@@ -631,7 +630,7 @@ static void printNode(xmlTextReaderPtr reader)
     }
 	else if(nodetype == XML_READER_TYPE_END_ELEMENT)  
     {  
-    	printf("End XML element\n");
+    	//printf("End XML element\n");
     	g_fixturename[0] = '\0';
     	GetFixture = 0;
     	GetSplice = 0;
@@ -649,7 +648,7 @@ static void printNode(xmlTextReaderPtr reader)
 	} else if (nodetype == XML_READER_TYPE_TEXT) {
 		//printf("text=[%s]\n",name);
 	} else if (nodetype == XML_READER_TYPE_CDATA) {
-		printf("CDATA=[%s]\n",name);
+		//printf("CDATA=[%s]\n",name);
 	}
 	else
     {  
@@ -1145,6 +1144,7 @@ int main(int argc, char **argv) {
 
 	pointA = 0;
 	pointB = 0;
+	// TODO Display the open items
 	printf("\nconnection list:\n");
 	for (i = 0; i < totalconnectnum; i++) {
 		printf("%d<->%d \t\tname=%s color=%d\n", connlist[i].pointA,
@@ -1641,6 +1641,8 @@ int main(int argc, char **argv) {
 	   }
    }
 
+// TODO if all connection test PASS, display the test result, and replace the cables; 
+// TODO when all connection are open, then start a new tests
 // TODO step2 test all connections in the used-pin list
 	printf("Test all used points:\n");
 	for (i = 0; i < MAXCHANNEL; i++) {
